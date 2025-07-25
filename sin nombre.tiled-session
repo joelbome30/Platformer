@@ -1,0 +1,67 @@
+{
+    "activeFile": "Nivel.tmx",
+    "expandedProjectPaths": [
+        "."
+    ],
+    "fileStates": {
+        "": {
+            "scaleInDock": 1
+        },
+        "#Suelo": {
+            "scaleInDock": 1
+        },
+        "Lava.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "Nivel.tmx": {
+            "scale": 0.75,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 571.3333333333333,
+                "y": 394
+            }
+        },
+        "Nivel.tmx#Suelo": {
+            "scaleInDock": 1
+        },
+        "Suelo.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "Tierra.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "Tierrax.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "Tile.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "Tiles Tierra.tsx": {
+            "dynamicWrapping": false,
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        }
+    },
+    "last.exportedFilePath": "C:/Descargas/Juego-Python-1.1",
+    "map.lastUsedExportFilter": "Todos los archivos (*)",
+    "openFiles": [
+        "Tile.tsx",
+        "Lava.tsx",
+        "Nivel.tmx"
+    ],
+    "project": "sin nombre.tiled-project",
+    "recentFiles": [
+        "Tile.tsx",
+        "Lava.tsx",
+        "Nivel.tmx",
+        "Tierra.tsx",
+        "Tiles Tierra.tsx",
+        "Suelo.tsx",
+        "Tierrax.tsx"
+    ]
+}
