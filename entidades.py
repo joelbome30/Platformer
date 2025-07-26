@@ -6,9 +6,12 @@ class Entity:
         self.posy = posy
         self.ancho = ancho
         self.alto = alto
+        self.muerto = False
 
-    def dibujar(self, superficie, color):
-        pygame.draw.rect(superficie, color, (self.posx, self.posy, self.ancho, self.alto))
+    def dibujar(self, superficie, color, offset_x=0, offset_y=0):
+        pygame.draw.rect(superficie, color, (self.posx - offset_x, self.posy - offset_y, self.ancho, self.alto))
+
+
 
     def get_rect(self):
         return pygame.Rect(self.posx, self.posy, self.ancho, self.alto)

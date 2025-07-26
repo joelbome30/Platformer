@@ -1,155 +1,148 @@
-import pygame
-import sys
-import pytmx
+import pygame, sys, pytmx
 from colores import *
 from entidades import *
-# Configuración
-ANCHO = 800
-ALTO = 600
-TILE_SIZE = 32
 
+ANCHO, ALTO, TILE = 800, 600, 32
 pygame.init()
 pantalla = pygame.display.set_mode((ANCHO, ALTO))
-pygame.display.set_caption("Juego")
+pygame.display.set_caption("juego")
 clock = pygame.time.Clock()
 
-# Cargar mapa
-tmx_data = pytmx.load_pygame("Nivel.tmx")
-map_width = tmx_data.width * TILE_SIZE
-map_height = tmx_data.height * TILE_SIZE
+tmx = pytmx.load_pygame("Nivel.tmx")
+map_w, map_h = tmx.width * TILE, tmx.height * TILE
 
-# Función para obtener rectángulos desde capas
-def obtener_rects(tmx, capa_nombre):
-    lista = []
-    for x, y, gid in tmx.get_layer_by_name(capa_nombre):
-        if gid != 0:
-            rect = pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
-            lista.append(rect)
-    return lista
+def rects(capa):
+    return [pygame.Rect(x * TILE, y * TILE, TILE, TILE)
+            for x, y, gid in tmx.get_layer_by_name(capa) if gid]
 
-# Jugador
-jugador = pygame.Rect(100, 100, 32, 32)
-color_jugador = (0, 0, 255)
-vel_y = 0
-gravedad = 900
-fuerza_salto = -400
-en_suelo = False
+plataformas = rects("Plataformas")
+lava = rects("Lava")
 
-# Paredes
-contacto_pared_izquierda = False
-contacto_pared_derecha = False
+# spawnpoints
+spawnpoints = []
+spawn_actual = None
 
-# Capas
-plataformas = obtener_rects(tmx_data, "Plataformas")
-lava_tiles = obtener_rects(tmx_data, "Lava")
+for obj in tmx.objects:
+    if obj.type == "Spawnpoint":
+        rect = pygame.Rect(obj.x, obj.y, obj.width, obj.height)
+        spawnpoints.append((obj.id, rect))
+        if obj.id == 2:
+            spawn_actual = rect
 
-# Cámara
-camera_x = 0
-ultimo_tick = pygame.time.get_ticks()
+if not spawnpoints:
+    print("no hay spawnpoints")
+    sys.exit()
+if spawn_actual is None:
+    print("id 2 no encontrado, usando primero")
+    spawn_actual = spawnpoints[0][1]
 
-# Bucle principal
+jugador = Entity(spawn_actual.x, spawn_actual.y, 32, 32)
+jugador.muerto = False
+vel_y, gravedad, salto = 0, 900, -400
+en_suelo, t_muerte = False, 0
+
+# control de wallhop
+wallhop_izq_hecho = False
+wallhop_der_hecho = False
+
 while True:
-    ahora = pygame.time.get_ticks()
-    dt = (ahora - ultimo_tick) / 1000
-    ultimo_tick = ahora
-
-    for evento in pygame.event.get():
-        if evento.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
-        if evento.type == pygame.KEYDOWN:
-            if evento.key == pygame.K_UP:
-                if en_suelo:
-                    vel_y = fuerza_salto
-                    en_suelo = False
-                elif contacto_pared_izquierda:
-                    vel_y = fuerza_salto
-                    jugador.x += 10  # Rebota a la derecha
-                elif contacto_pared_derecha:
-                    vel_y = fuerza_salto
-                    jugador.x -= 10  # Rebota a la izquierda
-
-    # Movimiento lateral
+    dt = clock.tick(60) / 1000
     teclas = pygame.key.get_pressed()
-    movx = 0
-    if teclas[pygame.K_LEFT]:
-        movx = -300 * dt
-    if teclas[pygame.K_RIGHT]:
-        movx = 300 * dt
 
-    jugador.x += movx
+    for e in pygame.event.get():
+        if e.type == pygame.QUIT:
+            pygame.quit(); sys.exit()
+        if e.type == pygame.KEYDOWN and e.key == pygame.K_UP and not jugador.muerto:
+            if en_suelo:
+                vel_y = salto
+                wallhop_izq_hecho = False
+                wallhop_der_hecho = False
+            elif izq and teclas[pygame.K_RIGHT] and not wallhop_izq_hecho:
+                vel_y = salto
+                jugador.posx += 10
+                wallhop_izq_hecho = True
+            elif der and teclas[pygame.K_LEFT] and not wallhop_der_hecho:
+                vel_y = salto
+                jugador.posx -= 10
+                wallhop_der_hecho = True
 
-    # Colisiones horizontales
+    if jugador.muerto:
+        if pygame.time.get_ticks() - t_muerte >= 2000:
+            jugador.posx, jugador.posy = spawn_actual.x, spawn_actual.y
+            jugador.muerto = False
+            vel_y = 0
+            en_suelo = False
+            wallhop_izq_hecho = False
+            wallhop_der_hecho = False
+        else:
+            continue
+
+    movx = (-300 if teclas[pygame.K_LEFT] else 0) + (300 if teclas[pygame.K_RIGHT] else 0)
+    jugador.posx += movx * dt
+
+    rect = jugador.get_rect()
     for p in plataformas:
-        if jugador.colliderect(p):
-            if movx > 0:
-                jugador.right = p.left
-            elif movx < 0:
-                jugador.left = p.right
-
-    # Detectar contacto con paredes
-    contacto_pared_izquierda = False
-    contacto_pared_derecha = False
-    rect_izq = jugador.move(-1, 0)
-    rect_der = jugador.move(1, 0)
-    for p in plataformas:
-        if rect_izq.colliderect(p):
-            contacto_pared_izquierda = True
-        if rect_der.colliderect(p):
-            contacto_pared_derecha = True
-
-    # Movimiento vertical con gravedad
-    vel_y += gravedad * dt
-
-    # Wall slide: si toca pared y no está en suelo
-    if not en_suelo and (contacto_pared_izquierda or contacto_pared_derecha):
-        vel_y = min(vel_y, 200)  # Caída lenta
-
-    jugador.y += vel_y * dt
-
-    # Colisiones verticales
-    for p in plataformas:
-        if jugador.colliderect(p):
-            if vel_y > 0:
-                jugador.bottom = p.top
-                vel_y = 0
-                en_suelo = True
-            elif vel_y < 0:
-                jugador.top = p.bottom
-                vel_y = 0
-
-    # Verificar si está sobre plataforma
-    jugador_abajo = jugador.move(0, 1)
-    en_suelo = False
-    for p in plataformas:
-        if jugador_abajo.colliderect(p):
-            en_suelo = True
+        if rect.colliderect(p):
+            jugador.posx = p.left - jugador.ancho if movx > 0 else p.right
             break
 
-    # Deteccion de lava
-    for lava in lava_tiles:
-        if jugador.colliderect(lava):
-            fuente = pygame.font.SysFont(None, 80)
-            texto = fuente.render("¡Perdiste!", True, (255, 0, 0))
-            pygame.quit()
-            sys.exit()
+    # contacto con pared
+    izq = any(rect.move(-1, 0).colliderect(p) for p in plataformas)
+    der = any(rect.move(1, 0).colliderect(p) for p in plataformas)
 
-    # camara
-    camera_x = jugador.centerx - ANCHO // 2
-    camera_x = max(0, min(camera_x, map_width - ANCHO))
+    # reiniciar wallhop si se despega
+    if not izq:
+        wallhop_izq_hecho = False
+    if not der:
+        wallhop_der_hecho = False
 
-    # dibujar
-    pantalla.fill((color_azul_cielo))
+    vel_y += gravedad * dt
+    if not en_suelo and (izq or der): vel_y = min(vel_y, 200)
+    jugador.posy += vel_y * dt
 
-    for layer in tmx_data.visible_layers:
+    rect = jugador.get_rect()
+    for p in plataformas:
+        if rect.colliderect(p):
+            if vel_y > 0:
+                jugador.posy = p.top - jugador.alto
+                en_suelo = True
+            else:
+                jugador.posy = p.bottom
+            vel_y = 0
+            break
+
+    en_suelo = any(rect.move(0, 1).colliderect(p) for p in plataformas)
+
+    if any(rect.colliderect(l) for l in lava):
+        jugador.muerto = True
+        t_muerte = pygame.time.get_ticks()
+
+    for _, s in spawnpoints:
+        if rect.colliderect(s):
+            spawn_actual = s
+
+    jugador.posx = max(0, min(jugador.posx, map_w - jugador.ancho))
+    jugador.posy = max(0, min(jugador.posy, map_h - jugador.alto))
+
+    cam_x = max(0, min(rect.centerx - ANCHO // 2, map_w - ANCHO))
+    cam_y = max(0, min(rect.centery - ALTO // 2, map_h - ALTO))
+
+    pantalla.fill(color_azul_cielo)
+    for layer in tmx.visible_layers:
         if isinstance(layer, pytmx.TiledTileLayer):
             for x, y, gid in layer:
-                tile = tmx_data.get_tile_image_by_gid(gid)
+                tile = tmx.get_tile_image_by_gid(gid)
                 if tile:
-                    pantalla.blit(tile, (x * TILE_SIZE - camera_x, y * TILE_SIZE))
+                    pantalla.blit(tile, (x * TILE - cam_x, y * TILE - cam_y))
 
-    pygame.draw.rect(pantalla, color_jugador, (jugador.x - camera_x, jugador.y, jugador.width, jugador.height))
+    if jugador.muerto:
+        pantalla.fill(color_rojo)
+        f = pygame.font.Font(None, 50)
+        t1 = f.render("has muerto", True, color_blanco)
+        t2 = f.render("reiniciando en 2 segundos...", True, color_blanco)
+        pantalla.blit(t1, (ANCHO // 2 - t1.get_width() // 2, ALTO // 2 - 50))
+        pantalla.blit(t2, (ANCHO // 2 - t2.get_width() // 2, ALTO // 2))
+    else:
+        jugador.dibujar(pantalla, (0, 0, 255), cam_x, cam_y)
 
     pygame.display.flip()
-    clock.tick(60)
-
