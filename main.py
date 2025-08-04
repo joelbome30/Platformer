@@ -1,74 +1,107 @@
-import pygame, sys, pytmx
+import pygame
+import sys
+import pytmx
 from colores import *
 from entidades import *
 
-ANCHO, ALTO, TILE = 800, 600, 32
+# Constants
+ancho, alto, tamaño = 800, 600, 16
 pygame.init()
-pantalla = pygame.display.set_mode((ANCHO, ALTO))
-pygame.display.set_caption("juego")
-clock = pygame.time.Clock()
+pantalla = pygame.display.set_mode((ancho, alto))
+pygame.display.set_caption("Juego")
+reloj = pygame.time.Clock()
 
-tmx = pytmx.load_pygame("Nivel.tmx")
-map_w, map_h = tmx.width * TILE, tmx.height * TILE
+# Load map and assets
+mapa = pytmx.load_pygame("Nivel.tmx")
+fondo_img = pygame.image.load("Assets/Backgrounds/lev01_checkers/area01_parallax/area01_bkg1.png").convert()
 
-def rects(capa):
-    return [pygame.Rect(x * TILE, y * TILE, TILE, TILE)
-            for x, y, gid in tmx.get_layer_by_name(capa) if gid]
+# Find coin image
+imagen_moneda = None
+for objeto in mapa.objects:
+    if getattr(objeto, "type", "") == "Coin" and hasattr(objeto, "gid"):
+        imagen_moneda = mapa.get_tile_image_by_gid(objeto.gid)
+        break
 
-plataformas = rects("Plataformas")
-lava = rects("Lava")
+mapa_ancho, mapa_alto = mapa.width * tamaño, mapa.height * tamaño
 
-# spawnpoints
-spawnpoints = []
-spawn_actual = None
+def obtener_rects(nombre_capa):
+    return [pygame.Rect(x * tamaño, y * tamaño, tamaño, tamaño)
+            for x, y, gid in mapa.get_layer_by_name(nombre_capa) if gid]
 
-for obj in tmx.objects:
-    if obj.type == "Spawnpoint":
-        rect = pygame.Rect(obj.x, obj.y, obj.width, obj.height)
-        spawnpoints.append((obj.id, rect))
-        if obj.id == 2:
-            spawn_actual = rect
+plataformas = obtener_rects("Plataformas")
+lava = obtener_rects("Lava")
 
-if not spawnpoints:
-    print("no hay spawnpoints")
+# Collectibles
+monedas_recolectadas = 0
+monedas = []
+for obj in mapa.objects:
+    if getattr(obj, "type", "") == "Coin" and hasattr(obj, "gid"):
+        imagen = mapa.get_tile_image_by_gid(obj.gid)
+        rect = pygame.Rect(obj.x, obj.y - imagen.get_height(), imagen.get_width(), imagen.get_height())
+        monedas.append({"rect": rect, "imagen": imagen})
+
+# Find spawn point
+punto_inicial = None
+for objeto in mapa.objects:
+    if getattr(objeto, "type", "") == "Spawnpoint" and objeto.name == "Inicio":
+        punto_inicial = pygame.Rect(objeto.x, objeto.y, objeto.width, objeto.height)
+        break
+
+if punto_inicial is None:
+    print("No se encontró un Spawnpoint llamado 'Inicio'")
     sys.exit()
-if spawn_actual is None:
-    print("id 2 no encontrado, usando primero")
-    spawn_actual = spawnpoints[0][1]
 
-jugador = Entity(spawn_actual.x, spawn_actual.y, 32, 32)
+# Player setup
+jugador = Entity(punto_inicial.x, punto_inicial.y, 16, 16)
 jugador.muerto = False
-vel_y, gravedad, salto = 0, 900, -400
-en_suelo, t_muerte = False, 0
 
-# control de wallhop
+# Game variables
+zoom = 1.25
+velocidad = 200
+vel_y = 0
+gravedad = 900
+salto = -300
+en_suelo = False
+tiempo_muerte = 0
 wallhop_izq_hecho = False
 wallhop_der_hecho = False
+muertes = 0
+fuente = pygame.font.Font(None, 30)
 
+# Main game loop
 while True:
-    dt = clock.tick(60) / 1000
+    dt = reloj.tick(60) / 1000
     teclas = pygame.key.get_pressed()
 
-    for e in pygame.event.get():
-        if e.type == pygame.QUIT:
-            pygame.quit(); sys.exit()
-        if e.type == pygame.KEYDOWN and e.key == pygame.K_UP and not jugador.muerto:
-            if en_suelo:
-                vel_y = salto
-                wallhop_izq_hecho = False
-                wallhop_der_hecho = False
-            elif izq and teclas[pygame.K_RIGHT] and not wallhop_izq_hecho:
-                vel_y = salto
-                jugador.posx += 10
-                wallhop_izq_hecho = True
-            elif der and teclas[pygame.K_LEFT] and not wallhop_der_hecho:
-                vel_y = salto
-                jugador.posx -= 10
-                wallhop_der_hecho = True
+    # Event handling
+    for evento in pygame.event.get():
+        if evento.type == pygame.QUIT:
+            pygame.quit()
+            sys.exit()
+        if evento.type == pygame.KEYDOWN:
+            if evento.key == pygame.K_UP and not jugador.muerto:
+                if en_suelo:
+                    vel_y = salto
+                    wallhop_izq_hecho = False
+                    wallhop_der_hecho = False
+                elif tocando_izquierda and teclas[pygame.K_RIGHT] and not wallhop_izq_hecho:
+                    vel_y = salto
+                    jugador.posx += 10
+                    wallhop_izq_hecho = True
+                elif tocando_derecha and teclas[pygame.K_LEFT] and not wallhop_der_hecho:
+                    vel_y = salto
+                    jugador.posx -= 10
+                    wallhop_der_hecho = True
 
+            elif evento.key in (pygame.K_EQUALS, pygame.K_PLUS):
+                zoom = min(2.0, zoom + 0.1)
+            elif evento.key == pygame.K_MINUS:
+                zoom = max(0.5, zoom - 0.1)
+
+    # Player death handling
     if jugador.muerto:
-        if pygame.time.get_ticks() - t_muerte >= 2000:
-            jugador.posx, jugador.posy = spawn_actual.x, spawn_actual.y
+        if pygame.time.get_ticks() - tiempo_muerte >= 2000:
+            jugador.posx, jugador.posy = punto_inicial.x, punto_inicial.y
             jugador.muerto = False
             vel_y = 0
             en_suelo = False
@@ -77,29 +110,31 @@ while True:
         else:
             continue
 
-    movx = (-300 if teclas[pygame.K_LEFT] else 0) + (300 if teclas[pygame.K_RIGHT] else 0)
-    jugador.posx += movx * dt
+    # Horizontal movement
+    mov_horizontal = (-velocidad if teclas[pygame.K_LEFT] else 0) + (velocidad if teclas[pygame.K_RIGHT] else 0)
+    jugador.posx += mov_horizontal * dt
 
+    # Collision detection
     rect = jugador.get_rect()
     for p in plataformas:
         if rect.colliderect(p):
-            jugador.posx = p.left - jugador.ancho if movx > 0 else p.right
+            jugador.posx = p.left - jugador.ancho if mov_horizontal > 0 else p.right
             break
 
-    # contacto con pared
-    izq = any(rect.move(-1, 0).colliderect(p) for p in plataformas)
-    der = any(rect.move(1, 0).colliderect(p) for p in plataformas)
+    tocando_izquierda = any(rect.move(-1, 0).colliderect(p) for p in plataformas)
+    tocando_derecha = any(rect.move(1, 0).colliderect(p) for p in plataformas)
 
-    # reiniciar wallhop si se despega
-    if not izq:
+    if not tocando_izquierda:
         wallhop_izq_hecho = False
-    if not der:
+    if not tocando_derecha:
         wallhop_der_hecho = False
 
+    # Vertical movement and gravity
     vel_y += gravedad * dt
-    if not en_suelo and (izq or der): vel_y = min(vel_y, 200)
-    jugador.posy += vel_y * dt
+    if not en_suelo and (tocando_izquierda or tocando_derecha):
+        vel_y = min(vel_y, 200)
 
+    jugador.posy += vel_y * dt
     rect = jugador.get_rect()
     for p in plataformas:
         if rect.colliderect(p):
@@ -113,36 +148,58 @@ while True:
 
     en_suelo = any(rect.move(0, 1).colliderect(p) for p in plataformas)
 
+    # Lava collision
     if any(rect.colliderect(l) for l in lava):
         jugador.muerto = True
-        t_muerte = pygame.time.get_ticks()
+        tiempo_muerte = pygame.time.get_ticks()
+        muertes += 1
 
-    for _, s in spawnpoints:
-        if rect.colliderect(s):
-            spawn_actual = s
+    # Coin collection
+    monedas = [m for m in monedas if not rect.colliderect(m["rect"])]
+    monedas_recolectadas += len([m for m in monedas if rect.colliderect(m["rect"])])
 
-    jugador.posx = max(0, min(jugador.posx, map_w - jugador.ancho))
-    jugador.posy = max(0, min(jugador.posy, map_h - jugador.alto))
+    # Boundary checking
+    jugador.posx = max(0, min(jugador.posx, mapa_ancho - jugador.ancho))
+    jugador.posy = max(0, min(jugador.posy, mapa_alto - jugador.alto))
 
-    cam_x = max(0, min(rect.centerx - ANCHO // 2, map_w - ANCHO))
-    cam_y = max(0, min(rect.centery - ALTO // 2, map_h - ALTO))
+    # Camera setup
+    cam_x = max(0, min(rect.centerx - ancho // (2 * zoom), mapa_ancho - ancho // zoom))
+    cam_y = 0 if mapa_alto <= alto else max(0, min(rect.centery - alto // (2 * zoom), mapa_alto - alto // zoom))
 
-    pantalla.fill(color_azul_cielo)
-    for layer in tmx.visible_layers:
-        if isinstance(layer, pytmx.TiledTileLayer):
-            for x, y, gid in layer:
-                tile = tmx.get_tile_image_by_gid(gid)
+    # Render zoomed surface
+    pantalla_zoom = pygame.Surface((ancho // zoom, alto // zoom))
+
+    # Draw background
+    fondo_escalado = pygame.transform.scale(fondo_img, (mapa_ancho, mapa_alto))
+    pantalla_zoom.blit(fondo_escalado, (-cam_x, -cam_y))
+
+    # Draw map layers
+    for capa in mapa.visible_layers:
+        if isinstance(capa, pytmx.TiledTileLayer):
+            for x, y, gid in capa:
+                tile = mapa.get_tile_image_by_gid(gid)
                 if tile:
-                    pantalla.blit(tile, (x * TILE - cam_x, y * TILE - cam_y))
+                    pantalla_zoom.blit(tile, (x * tamaño - cam_x, y * tamaño - cam_y))
 
+    # Draw coins
+    for moneda in monedas:
+        pantalla_zoom.blit(moneda["imagen"], (moneda["rect"].x - cam_x, moneda["rect"].y - cam_y))
+
+    # Draw player or death screen
     if jugador.muerto:
-        pantalla.fill(color_rojo)
-        f = pygame.font.Font(None, 50)
-        t1 = f.render("has muerto", True, color_blanco)
-        t2 = f.render("reiniciando en 2 segundos...", True, color_blanco)
-        pantalla.blit(t1, (ANCHO // 2 - t1.get_width() // 2, ALTO // 2 - 50))
-        pantalla.blit(t2, (ANCHO // 2 - t2.get_width() // 2, ALTO // 2))
+        pantalla_zoom.fill(color_rojo)
     else:
-        jugador.dibujar(pantalla, (0, 0, 255), cam_x, cam_y)
+        jugador.dibujar(pantalla_zoom, (0, 0, 255), cam_x, cam_y)
 
+    # Draw HUD
+    if imagen_moneda:
+        pantalla_zoom.blit(imagen_moneda, (5, 5))
+        texto = fuente.render(str(monedas_recolectadas), True, color_blanco)
+        pantalla_zoom.blit(texto, (25, 7))
+
+        texto2 = fuente.render(f"Muertes: {muertes}", True, color_blanco)
+        pantalla_zoom.blit(texto2, (5, 28))
+
+    # Final render
+    pygame.transform.scale(pantalla_zoom, (ancho, alto), pantalla)
     pygame.display.flip()
